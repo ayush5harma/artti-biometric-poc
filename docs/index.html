@@ -751,25 +751,25 @@
         </thead>
         <tbody>
           <tr>
-            <td><strong>#1: Rootless <code>adb</code> Compiler Filter + Profile Lock</strong></td>
-            <td><code>lspatch-nondebuggable.apk</code></td>
-            <td>Runs <code>adb shell cmd package compile -m verify -f &lt;pkg&gt;</code> (allowed as <code>shell</code> UID 2000) so <code>base.odex</code> has zero AOT machine code, and locks <code>primary.prof</code> as <code>0400</code> empty file.</td>
-            <td><span class="badge badge-warn">Yes (2 offsets)</span><br/><code>gJdwpAllowed</code> + <code>runtime_debug_state_</code></td>
-            <td><span class="badge badge-info">Defense-in-Depth</span><br/>Great post-install addition</td>
+            <td><strong>#1: Rootless <code>adb</code> Compiler Filter + Profile Lock + Dynamic <code>.dynsym</code></strong></td>
+            <td><a href="https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-nondebuggable.apk" style="color:#38bdf8;"><code>lspatch-nondebuggable.apk</code></a></td>
+            <td>Keeps <code>android:debuggable="false"</code> in <code>AndroidManifest.xml</code>. Resolves <code>SetJdwpAllowed</code> &amp; <code>SetRuntimeDebugState</code> from <code>libart.so</code> <code>.dynsym</code>, runs <code>cmd package compile -m verify -f &lt;pkg&gt;</code>, and locks <code>primary.prof</code> (<code>0400</code>).</td>
+            <td><span class="badge badge-pass">Zero Hardcoded Offsets</span><br/>Exported <code>libart.so</code> <code>.dynsym</code> + ARM64 <code>STR</code> decoder</td>
+            <td><span class="badge badge-pass">Banking RASP Winner (5/5)</span><br/>Passes binary manifest + runtime checks</td>
           </tr>
           <tr>
             <td><strong>#2: JingMatrix/LSPatch Nested <code>origin.apk</code></strong></td>
-            <td><code>lspatch-nested-origin.apk</code></td>
+            <td><a href="https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-nested-origin.apk" style="color:#38bdf8;"><code>lspatch-nested-origin.apk</code></a></td>
             <td>Outer <code>base.apk</code> only has <code>LSPAppComponentFactoryStub</code> in <code>classes.dex</code>; original APK sits in <code>assets/lspatch/origin.apk</code> so <code>dex2oat</code> never compiles app classes at install time.</td>
-            <td><span class="badge badge-warn">Yes (if debuggable=false)</span><br/>Plus <code>AppBindData</code> reflection</td>
-            <td><span class="badge badge-warn">Complex</span><br/>Requires HiddenAPI bypass on Android 17</td>
+            <td><span class="badge badge-pass">Zero Hardcoded Offsets</span><br/>Dynamic <code>.dynsym</code> + <code>AppBindData</code> reflection</td>
+            <td><span class="badge badge-info">Signature-Preserving</span><br/>Passes 5/5 RASP + keeps <code>origin.apk</code> intact</td>
           </tr>
           <tr>
             <td><strong>#3: Packaging <code>debuggable=true</code> + Runtime Scrub</strong></td>
-            <td><code>lspatch-debuggable-scrubbed.apk</code></td>
+            <td><a href="https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-debuggable-scrubbed.apk" style="color:#38bdf8;"><code>lspatch-debuggable-scrubbed.apk</code></a></td>
             <td>Sets <code>android:debuggable="true"</code> during APK re-signing. Zygote enables JDWP/JVMTI officially and <code>installd</code> passes <code>--debuggable</code> to <code>dex2oat</code>. Scrubs <code>FLAG_DEBUGGABLE</code> at startup.</td>
-            <td><span class="badge badge-pass">Zero (0 Offsets)</span><br/>100% Public SDK <code>Debug.attachJvmtiAgent</code></td>
-            <td><span class="badge badge-pass">Recommended Winner</span><br/>Version-stable across Android 9–18+</td>
+            <td><span class="badge badge-pass">Zero (0 Symbols/Offsets)</span><br/>100% Public SDK <code>Debug.attachJvmtiAgent</code></td>
+            <td><span class="badge badge-pass">Standard App Winner</span><br/>Zero native symbol lookup needed</td>
           </tr>
         </tbody>
       </table>
@@ -823,46 +823,122 @@
     </div>
   </section>
 
-  <!-- SECTION 7: MEASURED ANDROID 17 E2E LOGCAT EVIDENCE -->
+  <!-- SECTION 7: CAMERA1, CAMERA2 & CAMERAX IMAGE INJECTION + BANKING RASP -->
   <section>
-    <h2>7. Measured End-to-End Verification Log (Pixel 9 Pro, Android 17 / API 37)</h2>
+    <h2>7. Camera Image Injection (Camera1 / Camera2 / CameraX) &amp; Banking RASP Suite</h2>
+    <p class="section-lead">
+      End-to-end validation of local image file injection (<code>bs_injected_kyc_frame.jpg</code>, <code>320x240</code>,
+      emerald marker pixel <code>#10B981</code>) across all three Android camera APIs, native JNI method hooking via
+      <code>JVMTI_EVENT_NATIVE_METHOD_BIND</code>, and a 5-point Banking RASP self-audit.
+    </p>
+
+    <div class="grid-2" style="margin-bottom:20px;">
+      <div class="card">
+        <h3>Camera1, Camera2 &amp; CameraX Image File Injection</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Camera API</th>
+              <th>ART TI Hook Point (<code>location=0</code>)</th>
+              <th>Measured Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Camera1</strong><br/><code>android.hardware.Camera</code></td>
+              <td><code>takePicture(...)</code><br/><code>setOneShotPreviewCallback(...)</code><br/><code>setPreviewCallback(...)</code></td>
+              <td><span class="badge badge-pass">NV21: 115,200B</span><br/><span class="badge badge-pass">JPEG: 320x240@#10b981</span></td>
+            </tr>
+            <tr>
+              <td><strong>Camera2</strong><br/><code>android.media.ImageReader</code></td>
+              <td><code>setOnImageAvailableListener(...)</code><br/>Draws onto <code>reader.getSurface()</code> so <code>acquireLatestImage()</code> returns a real OS <code>Image</code></td>
+              <td><span class="badge badge-pass">Image: 320x240@#10b981</span></td>
+            </tr>
+            <tr>
+              <td><strong>CameraX</strong><br/><code>androidx.camera.core.ImageAnalysis</code></td>
+              <td><code>setAnalyzer(Executor, Analyzer)</code><br/>Delivers hardware-backed <code>AndroidImageProxy</code></td>
+              <td><span class="badge badge-pass">ImageProxy: 320x240@#10b981</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Banking App RASP 5-Point Audit + Native JNI Hook</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Check / Capability</th>
+              <th>Mechanism</th>
+              <th><code>lspatch-nondebuggable.apk</code></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1. Java <code>FLAG_DEBUGGABLE</code></strong></td>
+              <td><code>getApplicationInfo().flags</code></td>
+              <td><span class="badge badge-pass">false (Clean)</span></td>
+            </tr>
+            <tr>
+              <td><strong>2. Binder <code>IPackageManager</code></strong></td>
+              <td><code>getPackageManager().getApplicationInfo()</code></td>
+              <td><span class="badge badge-pass">false (Clean)</span></td>
+            </tr>
+            <tr>
+              <td><strong>3. Kernel <code>prctl(PR_GET_DUMPABLE)</code></strong></td>
+              <td>Native C <code>prctl(PR_GET_DUMPABLE)</code></td>
+              <td><span class="badge badge-pass">0 (Non-Dumpable)</span></td>
+            </tr>
+            <tr>
+              <td><strong>4. <code>/proc/self/status</code> <code>TracerPid</code></strong></td>
+              <td>Native C scan for ptrace / Frida</td>
+              <td><span class="badge badge-pass">0 (Untraced)</span></td>
+            </tr>
+            <tr>
+              <td><strong>5. Binary <code>AndroidManifest.xml</code></strong></td>
+              <td>AXML parser for <code>0x0101000f</code> in <code>base.apk</code></td>
+              <td><span class="badge badge-pass">false (Unmodified)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Native JNI Method Hook</strong></td>
+              <td><code>JVMTI_EVENT_NATIVE_METHOD_BIND</code> on <code>TargetWork.nativeSecretToken</code> (0 inline trampolines)</td>
+              <td><span class="badge badge-pass">Redirected &amp; Verified</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 8: MEASURED ANDROID 17 E2E LOGCAT EVIDENCE -->
+  <section>
+    <h2>8. Measured End-to-End Verification Log (Pixel 9 Pro, Android 17 / API 37)</h2>
     <p class="section-lead">
       Recorded from <code>./scripts/test-e2e.sh</code> on physical hardware (<code>model=Pixel 9 Pro android=17 sdk=37 build_type=user debuggable=0</code>).
+      Download pre-built APKs from <a href="https://github.com/ayush5harma/artti-biometric-poc/releases/tag/v1.0.0" style="color:#38bdf8;">GitHub Release v1.0.0</a>.
     </p>
 
     <div class="card">
-      <pre>--- [SCENARIO 5] Rootless Package-Install Layer #3: APK-Packaging debuggable=true + Runtime FLAG_DEBUGGABLE Scrub ---
-[5A: Biometric Popup -> PASS]
-I ARTTI_LSPatch  : Attached ART TI agent via public Debug.attachJvmtiAgent
-I ARTTI_LSPatch  : LSPApplication bootstrap complete: attach=PUBLIC_SDK_DEBUG_ATTACH_JVMTI_AGENT manifestDebuggable=true scrubbedDebuggable=true biometricHook=ARMED(cap=0,ev=0,bp3=0,bp4=0,bm=0/0,fp=0/0/0)
-I ARTTI_POC      : [HOOK_VERIFY] appSeesDebuggable=false pmSeesDebuggable=false origFactoryDelegated=true canAuth=0 fpReady=true/true allocFallbackType=2 | DirectCall={plain_entry=1 same_inlined_entry=1 cross_inlined_entry=1 | plain_bp=1 same_inlined_bp=1 cross_inlined_bp=1} | PolyCall={plain_entry=1 same_inlined_entry=1 cross_inlined_entry=1 | plain_bp=1 same_inlined_bp=1 cross_inlined_bp=1} | Retransform={mode=31 retransform_cap=0 cflh_ev=0 retransform_err=0 cflh_hits=2}
-I ARTTI_BIOMETRIC: [INTERCEPTED] BiometricPrompt.authenticate intercepted via ART TI! count=1 title='Verify Your Identity' subtitle='BrowserStack App Live Biometric PoC'
-I ARTTI_POC      : [HOOK][BiometricPrompt] ForceEarlyReturnVoid(thread) -> err=0
+      <pre>--- [SCENARIO 2] Non-Debuggable Manifest + Dynamic .dynsym Attach + OnNativeMethodBind (lspatch-nondebuggable.apk) ---
+I ARTTI_POC      : [ResolveArtSymbols] Dynamically resolved from /apex/com.android.art/lib64/libart.so (.dynsym): SetJdwpAllowed=0x793e342ab8 IsJdwpAllowed=0x793e342ac8 Runtime::instance_=0x793e904438 SetRuntimeDebugState=0x793e4b8c1c decoded_debug_state_offset=0x3d4
+I ARTTI_LSPatch  : LSPApplication bootstrap complete: attach=NATIVE_MEM_PATCH(DYN_DYNSYM_OK(jdwp:0->1,dbgState:0->2@+0x3d4,jvmti:0xb40000795ececbd0)) manifestDebuggable=false scrubbedDebuggable=true biometricHook=ARMED(cap=0,ev=0,bp3=0,bp4=0,bm=0/0,fp=0/0/0) cameraHook=CAM_ARMED(c1Pic=0,c1Prv=0/0,c2Ir=0,cXAn=0)
+I ARTTI_POC      : [HOOK][OnNativeMethodBind] Intercepted JNI bind for Lcom/example/arttipoc/TargetWork;nativeSecretToken(Ljava/lang/String;)Ljava/lang/String; orig=0x790edab908 -> redirected=0x790edac8a4 (hits=1)
+I ARTTI_POC      : [HOOK][NativeMethodBind] HookedNativeSecretToken executed -> ARTTI_NATIVE_BIND_HOOKED[call=1,orig=ORIG_JNI(BS_CHALLENGE_42)]
+
+--- [SCENARIO 6] Camera1, Camera2 &amp; CameraX Image File Injection (bs_injected_kyc_frame.jpg -> Camera Feed) ---
+I ARTTI_CAMERA   : [IMAGE_READY] Prepared injected camera image file: /data/user/0/com.example.arttipoc/files/bs_injected_kyc_frame.jpg (5175 bytes, 320x240)
+I ARTTI_CAMERA   : [INTERCEPTED][Camera1] Camera.setPreviewCallback intercepted via ART TI! hit=1 injecting NV21 frame (115200 bytes)
+I ARTTI_CAMERA   : [INTERCEPTED][Camera1] Camera.takePicture intercepted via ART TI! hit=2 injecting 5175 bytes from bs_injected_kyc_frame.jpg
+I ARTTI_CAMERA   : [INTERCEPTED][Camera2] ImageReader.setOnImageAvailableListener intercepted via ART TI! hit=1 size=320x240 format=1
+I ARTTI_CAMERA   : [INTERCEPTED][CameraX] ImageAnalysis.setAnalyzer intercepted via ART TI! hit=1 analyzer=com.example.arttipoc.CameraTestController$$ExternalSyntheticLambda5
+I ARTTI_POC      : [CAMERA_OUTCOME] Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981 | loaderTelemetry={cam1Hits=2 cam2Hits=1 camXHits=1 file=bs_injected_kyc_frame.jpg}
+
+--- [SCENARIO 7] Banking App RASP Self-Audit (5/5 Checks) + KYC Camera Check Deposit + Biometric Wire Transfer ---
+I ARTTI_POC      : [BANKING_RASP_AUDIT] BANKING_RASP_PASS(5/5_STEALTH_CLEAN) [javaDbg=false binderPmDbg=false prctlDumpable=0 tracerPid=0 binaryManifestDbg=false]
+I ARTTI_POC      : [BANKING_KYC_CAMERA] Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981
 I ARTTI_BIOMETRIC: [POPUP_SHOWN] Displayed in-app Pass/Fail/Cancel biometric popup on Activity=com.example.arttipoc.MainActivity
 I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked PASS -> invoking onAuthenticationSucceeded
-I ARTTI_POC      : [BIO_OUTCOME] PASS (onAuthenticationSucceeded) -> AuthenticationResult(type=2, crypto=null)
-
-[5B: Biometric Popup -> FAIL]
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked FAIL -> invoking onAuthenticationFailed
-I ARTTI_POC      : [BIO_OUTCOME] FAIL (onAuthenticationFailed) -> Biometric recognized as invalid (onAuthenticationFailed)
-
-[5C: Biometric Popup -> CANCEL]
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked CANCEL -> invoking onAuthenticationError(USER_CANCELED)
-I ARTTI_POC      : [BIO_OUTCOME] CANCEL/ERROR (onAuthenticationError) -> errorCode=10 errString='User canceled biometric authentication via ART TI popup'
-
-[5D: Legacy FingerprintManager.authenticate -> PASS]
-I ARTTI_BIOMETRIC: [INTERCEPTED] FingerprintManager.authenticate intercepted via ART TI! count=1
-I ARTTI_POC      : [HOOK][FingerprintManager] ForceEarlyReturnVoid(thread) -> err=0
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked PASS -> invoking onAuthenticationSucceeded
-I ARTTI_POC      : [BIO_OUTCOME] FP_PASS (onAuthenticationSucceeded) -> result=android.hardware.fingerprint.FingerprintManager$AuthenticationResult@...
-
-[5E: Interactive Popup Window Hierarchy Check (uiautomator dump)]
-text="[Biometric Sim] Verify Your Identity"
-text="ART TI (JVMTI) INTERCEPTED PROMPT"
-text="BrowserStack App Live Biometric PoC"
-text="Authenticate to approve corporate transfer #4821"
-text="System BiometricPrompt was bypassed at bytecode offset 0 via JVMTI SetBreakpoint + ForceEarlyReturnVoid.&#10;Select simulated outcome:"
-text="FAIL" | text="CANCEL" | text="PASS"</pre>
+I ARTTI_POC      : [BANKING_OUTCOME] BANKING_TX_APPROVED [rasp={BANKING_RASP_PASS(5/5_STEALTH_CLEAN) [javaDbg=false binderPmDbg=false prctlDumpable=0 tracerPid=0 binaryManifestDbg=false]} kyc={Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981} bio={PASS (onAuthenticationSucceeded)}]</pre>
     </div>
   </section>
 

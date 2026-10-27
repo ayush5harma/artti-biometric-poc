@@ -34,7 +34,7 @@ adb shell cmd package compile -m speed -f "$PKG" >/dev/null
 adb logcat -c
 adb shell am start -W -n "$PKG/.MainActivity" --es e2e_action run_all --es bio_choice PASS >/dev/null
 sleep 2
-adb logcat -d -s ARTTI_POC:I ARTTI_LSPatch:I ARTTI_BIOMETRIC:I | grep -E "JNI_OnLoad|Verified Gate|Upgraded runtime_debug_state_|LSPApplication bootstrap|HOOK_VERIFY|INTERCEPTED|POPUP_SHOWN|BIO_AUTO_CLICK|BIO_OUTCOME" || true
+adb logcat -d -s ARTTI_POC:I ARTTI_LSPatch:I ARTTI_BIOMETRIC:I | grep -E "JNI_OnLoad|ResolveArtSymbols|Verified Gate|Upgraded runtime_debug_state_|LSPApplication bootstrap|OnNativeMethodBind|NativeMethodBind|HOOK_VERIFY|INTERCEPTED|POPUP_SHOWN|BIO_AUTO_CLICK|BIO_OUTCOME" || true
 
 echo ""
 echo "--- [SCENARIO 3] Rootless Package-Install Layer #1: Non-Debuggable Manifest + 'cmd package compile -m verify' ---"
@@ -90,7 +90,23 @@ sleep 2
 adb logcat -d -s ARTTI_POC:I ARTTI_LSPatch:I ARTTI_BIOMETRIC:I | grep -E "INTERCEPTED|ForceEarlyReturnVoid|POPUP_SHOWN|POPUP_ACTION|BIO_AUTO_CLICK|BIO_OUTCOME" || true
 
 echo ""
-echo "[5E: Interactive Popup Window Hierarchy Check (leaving Pass/Fail/Cancel popup visible for uiautomator inspection)]"
+echo "--- [SCENARIO 6] Camera1, Camera2 & CameraX Image File Injection (bs_injected_kyc_frame.jpg -> Camera Feed) ---"
+install_fresh "$BUILD_DIR/lspatch-nondebuggable.apk"
+adb shell cmd package compile -m verify -f "$PKG" >/dev/null
+adb logcat -c
+adb shell am start -S -W -n "$PKG/.MainActivity" --es e2e_action camera >/dev/null
+sleep 2
+adb logcat -d -s ARTTI_POC:I ARTTI_LSPatch:I ARTTI_CAMERA:I | grep -E "IMAGE_READY|nativeInstallCameraHooks|INTERCEPTED|CAMERA1_PREVIEW|CAMERA1_JPEG|CAMERA2_IMAGEREADER|CAMERAX_ANALYZER|CAMERA_INJECT_SUMMARY|CAMERA_OUTCOME" || true
+
+echo ""
+echo "--- [SCENARIO 7] Banking App RASP Self-Audit (5/5 Checks) + KYC Camera Check Deposit + Biometric Wire Transfer ---"
+adb logcat -c
+adb shell am start -S -W -n "$PKG/.MainActivity" --es e2e_action banking --es bio_choice PASS >/dev/null
+sleep 2
+adb logcat -d -s ARTTI_POC:I ARTTI_LSPatch:I ARTTI_BIOMETRIC:I ARTTI_CAMERA:I | grep -E "BANKING_RASP_AUDIT|BANKING_RASP|BANKING_KYC_CAMERA|POPUP_SHOWN|POPUP_ACTION|BANKING_OUTCOME" || true
+
+echo ""
+echo "[7B: Interactive Popup Window Hierarchy Check (leaving Pass/Fail/Cancel popup visible for uiautomator inspection)]"
 adb logcat -c
 adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
 adb shell am start -S -W -n "$PKG/.MainActivity" --es e2e_action biometric >/dev/null

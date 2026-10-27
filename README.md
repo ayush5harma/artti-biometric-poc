@@ -1,9 +1,24 @@
-# ART TI (JVMTI) + LSPatch BiometricPrompt Simulation PoC
+# ART TI (JVMTI) + LSPatch BiometricPrompt, Camera Injection & Banking RASP PoC
 
-Standalone Proof-of-Concept validating **ART Tooling Interface (ART TI / JVMTI 1.2)** + **LSPatch bootstrap** (`https://github.com/JingMatrix/LSPatch`) as an Android version-stable instrumentation replacement for Frida (`frida-java-bridge`) and Xposed/LSPlant method hooks in a controlled testing environment (such as BrowserStack App Live / App Accessibility).
+Standalone Proof-of-Concept validating **ART Tooling Interface (ART TI / JVMTI 1.2)** + **LSPatch bootstrap** (`https://github.com/JingMatrix/LSPatch`) as an Android version-stable instrumentation replacement for Frida (`frida-java-bridge`) and Xposed/LSPlant method hooks in a controlled testing environment (such as BrowserStack App Live / App Automate / App Accessibility).
 
 - **Interactive Architecture & Diagram Page (GitHub Pages)**: [https://ayush5harma.github.io/artti-biometric-poc/](https://ayush5harma.github.io/artti-biometric-poc/) (`docs/index.html`)
-- **Measured Environment**: Verified end-to-end on **2026-10-26** on a physical **Google Pixel 9 Pro** running **Android 17 (API 37, release build `user`, `ro.debuggable=0`, `ro.build.type=user`)** without root.
+- **Pre-Built APK & Agent Releases**: [https://github.com/ayush5harma/artti-biometric-poc/releases/tag/v1.0.0](https://github.com/ayush5harma/artti-biometric-poc/releases/tag/v1.0.0)
+- **Measured Environment**: Verified end-to-end on **2026-10-27** on a physical **Google Pixel 9 Pro** running **Android 17 (API 37, release build `user`, `ro.debuggable=0`, `ro.build.type=user`)** without root.
+
+---
+
+## Pre-Built Release Artifacts (`v1.0.0`)
+
+All 4 APK variants and the standalone ARM64 native agent (`libarttipoc.so`) are published in [GitHub Releases (`v1.0.0`)](https://github.com/ayush5harma/artti-biometric-poc/releases/tag/v1.0.0):
+
+| Artifact | Download Link | Manifest `android:debuggable` | Attach Mechanism | Banking RASP 5/5 Audit | Primary Use Case |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`lspatch-nondebuggable.apk`** | [Download APK](https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-nondebuggable.apk) | `false` | Dynamic `libart.so` `.dynsym` (`SetJdwpAllowed` + `SetRuntimeDebugState`) + public `Debug.attachJvmtiAgent` (**0 hardcoded offsets**) | **PASS (`5/5_STEALTH_CLEAN`)** | Production non-debuggable apps & Banking/RASP apps (paired with `cmd package compile -m verify` + `primary.prof` lock) |
+| **`lspatch-debuggable-scrubbed.apk`** | [Download APK](https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-debuggable-scrubbed.apk) | `true` (scrubbed at startup) | Public SDK `Debug.attachJvmtiAgent` + runtime `FLAG_DEBUGGABLE` scrub + `prctl(PR_SET_DUMPABLE, 0)` | `4/5` (passes Java, Binder, `prctl`, `TracerPid`; binary `AndroidManifest.xml` has `0x0101000f=true`) | General non-RASP apps where zero native `libart.so` symbol lookups are desired |
+| **`lspatch-nested-origin.apk`** | [Download APK](https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/lspatch-nested-origin.apk) | `false` | Dynamic `libart.so` `.dynsym` + `assets/lspatch/origin.apk` `LoadedApk` swap | **PASS (`5/5_STEALTH_CLEAN`)** | Apps where unmodified `origin.apk` signature/checksum inspection is required |
+| **`unpatched-sample.apk`** | [Download APK](https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/unpatched-sample.apk) | `false` | None (Baseline control APK) | Baseline (`5/5`) | Unmodified baseline comparison |
+| **`libarttipoc.so`** | [Download `.so`](https://github.com/ayush5harma/artti-biometric-poc/releases/download/v1.0.0/libarttipoc.so) | N/A | Standalone `arm64-v8a` ART TI / JVMTI 1.2 native agent (`16 KB` page-aligned) | N/A | Embedding into custom APK patchers |
 
 ---
 
@@ -12,147 +27,129 @@ Standalone Proof-of-Concept validating **ART Tooling Interface (ART TI / JVMTI 1
 ```text
 artti-biometric-poc/
 ├── docs/
-│   └── index.html                      # Self-contained SVG architecture diagrams & interactive popup simulator
+│   └── index.html                      # Self-contained SVG architecture diagrams & interactive simulator
 ├── native/
 │   ├── jvmti.h                         # Official standard JVMTI 1.2 C/C++ ABI header
-│   └── agent.cpp                       # ART TI agent + non-debuggable bypass + Biometric/Fingerprint hooks
+│   └── agent.cpp                       # ART TI agent: dynamic .dynsym resolver, OnNativeMethodBind, Biometric & Camera hooks
 ├── lspatch-bootstrap/
 │   └── src/org/lsposed/lspatch/
 │       ├── metaloader/
 │       │   └── LSPAppComponentFactoryStub.java  # JingMatrix/LSPatch bootstrap + original factory delegation
 │       └── loader/
 │           ├── LSPApplication.java              # Agent attach, origin.apk swap, profile lock, FLAG_DEBUGGABLE scrub
-│           └── BiometricPromptHookDialog.java   # In-app Pass / Fail / Cancel AlertDialog simulation
+│           ├── BiometricPromptHookDialog.java   # In-app Pass / Fail / Cancel AlertDialog simulation
+│           └── CameraInjectionHook.java         # Camera1, Camera2 (ImageReader Surface), and CameraX frame injection
 ├── sample-app/
 │   ├── AndroidManifest.xml             # Target app manifest (debuggable=false by default)
-│   └── src/com/example/arttipoc/
-│       ├── InlinedCallee.java          # Cross-class tiny callee (~3 DEX instructions) for AOT inlining test
-│       ├── TargetWork.java             # Plain, same-class inlined, and cross-class inlined methods
-│       ├── SampleOriginalAppComponentFactory.java # Simulates pre-existing appComponentFactory (e.g. AndroidX)
-│       ├── BiometricAuthController.java # Invokes android.hardware.biometrics.BiometricPrompt.authenticate(...)
-│       └── MainActivity.java           # UI + automated E2E intent harness
+│   └── src/
+│       ├── androidx/camera/core/       # CameraX ImageAnalysis, ImageProxy, and AndroidImageProxy surface
+│       └── com/example/arttipoc/
+│           ├── InlinedCallee.java               # Cross-class tiny callee (~3 DEX instructions) for AOT inlining test
+│           ├── TargetWork.java                  # Plain, same-class inlined, cross-class inlined & native JNI methods
+│           ├── SampleOriginalAppComponentFactory.java # Simulates pre-existing appComponentFactory (e.g. AndroidX)
+│           ├── BiometricAuthController.java     # Invokes android.hardware.biometrics.BiometricPrompt.authenticate(...)
+│           ├── CameraTestController.java        # Verifies Camera1 (NV21 + JPEG), Camera2 (ImageReader), and CameraX
+│           ├── BankingSecurityGuard.java        # 5-point Banking RASP anti-debug / anti-tamper self-audit
+│           └── MainActivity.java                # UI + automated E2E intent harness
 └── scripts/
     ├── build.sh                        # Compiles libarttipoc.so, DEX files, and packages 4 APK variants
-    └── test-e2e.sh                     # Runs all 5 E2E scenarios + Pass/Fail/Cancel + FingerprintManager tests
+    └── test-e2e.sh                     # Runs all 7 E2E scenarios on the connected Android device
 ```
 
 ---
 
-## Architecture: Bootstrap to `BiometricPrompt` Interception
+## Architecture: Bootstrap to Biometric, Camera & Native JNI Interception
 
-Unlike Frida (`gum-interceptor` inline assembly trampolines) or LSPlant (`ArtMethod` entrypoint replacement), ART TI uses standard **JVMTI 1.2** capabilities that have remained binary-compatible since Android 8.0 (API 26):
+Unlike Frida (`gum-interceptor` inline assembly trampolines) or LSPlant (`ArtMethod` entrypoint replacement), ART TI uses standard **JVMTI 1.2** capabilities (`can_generate_breakpoint_events`, `can_access_local_variables`, `can_force_early_return`, `can_generate_native_method_bind_events`, `can_retransform_classes`) that have remained binary-compatible since Android 8.0 (API 26):
 
 ```mermaid
 flowchart TD
-    subgraph P1["Phase 1: Rootless APK Packaging"]
-        A1["Manifest Patch: android:appComponentFactory=LSPAppComponentFactoryStub"]
-        A2["Approach 3: android:debuggable=true + re-sign APK"]
-        A3["Embed libarttipoc.so + assets/lspatch/loader.dex + original_app_component_factory.txt"]
+    subgraph P1["Phase 1: Rootless APK Packaging + Install"]
+        A1["Manifest Patch: android:appComponentFactory=LSPAppComponentFactoryStub (keep android:debuggable=false)"]
+        A2["Embed libarttipoc.so + assets/lspatch/loader.dex + original_app_component_factory.txt"]
+        A3["Post-install: adb shell cmd package compile -m verify -f <pkg> + lock primary.prof (0400)"]
         A1 --> A2 --> A3
     end
 
-    subgraph P2["Phase 2: Process Startup (Before App Classes Resolve)"]
-        B1["Zygote spawns process (gJdwpAllowed=1, runtime_debug_state_=2)"]
-        B2["LoadedApk.createAppFactory -> LSPAppComponentFactoryStub.<clinit>"]
-        B3["Public SDK Debug.attachJvmtiAgent('libarttipoc.so', null, cl)"]
-        B4["Scrub FLAG_DEBUGGABLE in memory + install IPackageManager Binder proxy"]
-        B5["Delegate instantiateApplication / instantiateActivity to Original AppComponentFactory"]
-        B1 --> B2 --> B3 --> B4 --> B5
+    subgraph P2["Phase 2: Process Startup (Zero Hardcoded Offsets)"]
+        B1["LoadedApk.createAppFactory -> LSPAppComponentFactoryStub.<clinit>"]
+        B2["Resolve SetJdwpAllowed + SetRuntimeDebugState + Runtime::instance_ from libart.so .dynsym"]
+        B3["Public SDK Debug.attachJvmtiAgent('libarttipoc.so', null, cl) + prctl(PR_SET_DUMPABLE, 0)"]
+        B4["Delegate instantiateApplication / instantiateActivity to Original AppComponentFactory"]
+        B1 --> B2 --> B3 --> B4
     end
 
-    subgraph P3["Phase 3: ART TI Interception & In-App Simulation"]
-        C1["BiometricManager.canAuthenticate / FingerprintManager readiness -> ForceEarlyReturnInt(0 / true)"]
-        C2["App calls BiometricPrompt.authenticate(...) or FingerprintManager.authenticate(...)"]
-        C3["JVMTI OnBreakpoint at bytecode location=0"]
-        C4["Extract arguments via GetLocalObject(slot = GetMaxLocals() - GetArgumentsSize() + i)"]
-        C5["ForceEarlyReturnVoid(thread) -> System IBiometricService is NEVER called"]
-        C6["Display in-app AlertDialog: [PASS] [FAIL] [CANCEL]"]
-        C7["PASS -> JNI AuthenticationResult (<init> + AllocObject fallback) -> onAuthenticationSucceeded"]
-        C8["FAIL -> onAuthenticationFailed() | CANCEL -> onAuthenticationError(10, msg)"]
-        C1 --> C2 --> C3 --> C4 --> C5 --> C6
-        C6 --> C7
-        C6 --> C8
+    subgraph P3["Phase 3: Multi-Surface ART TI Interception"]
+        C1["BiometricPrompt & FingerprintManager -> SetBreakpoint(loc=0) + ForceEarlyReturnVoid -> In-App [PASS/FAIL/CANCEL] Dialog"]
+        C2["Camera1 / Camera2 / CameraX -> SetBreakpoint(loc=0) -> Inject bs_injected_kyc_frame.jpg into JPEG, NV21, Surface & ImageProxy"]
+        C3["Native JNI Methods -> JVMTI OnNativeMethodBind redirects *new_address_ptr without inline trampolines"]
+        B4 --> C1
+        B4 --> C2
+        B4 --> C3
     end
 
     P1 --> P2 --> P3
 ```
 
-### Why `GetMaxLocals() - GetArgumentsSize()` Is Required on Dalvik/ART
+---
 
-In JVM bytecode, method arguments occupy local variable slots starting at slot `0`. In Dalvik/ART register frames, local scratch registers occupy `v0 .. v[M - A - 1]` while incoming method parameters (`ins`, starting with `this` for instance methods) occupy the **highest** registers at the top of the frame (`v[M - A .. M - 1]`).
+## Addressing Key Technical Questions (Measured on Android 17 / API 37)
 
-Measured on Android 17 (API 37) for `android.hardware.biometrics.BiometricPrompt`:
-- `authenticate(CancellationSignal, Executor, AuthenticationCallback)V`: `GetMaxLocals() = 11`, `GetArgumentsSize() = 4` -> arguments live in `v7` (`this`), `v8` (`cancel`), `v9` (`executor`), `v10` (`callback`).
-- `authenticate(CryptoObject, CancellationSignal, Executor, AuthenticationCallback)V`: `GetMaxLocals() = 14`, `GetArgumentsSize() = 5` -> arguments live in `v9` (`this`), `v10` (`crypto`), `v11` (`cancel`), `v12` (`executor`), `v13` (`callback`).
+### 1. Why Zero Hardcoded Offsets Are Needed Even When `android:debuggable="false"`
+
+A common concern with keeping `android:debuggable="false"` in `AndroidManifest.xml` (Approach #1) is whether unlocking ART TI requires hardcoding per-Android-version struct offsets inside `libart.so`.
+
+**Measured finding (2026-10-27 on Pixel 9 Pro, Android 17 / API 37):** **Zero hardcoded offsets are required.** Because `libopenjdkjvmti.so` and `libadbconnection.so` are separate shared libraries inside `/apex/com.android.art/lib64/` that dynamically link against `libart.so`, `libart.so` exports the exact C++ functions and globals needed in its standard, uncompressed ELF `.dynsym` symbol table across Android versions:
+
+| Exported ELF `.dynsym` Symbol in `libart.so` | Demangled C++ Signature | Purpose |
+| :--- | :--- | :--- |
+| `_ZN3art3Dbg14SetJdwpAllowedEb` | `art::Dbg::SetJdwpAllowed(bool)` | Officially sets `gJdwpAllowed = true` without needing `gJdwpAllowed`'s memory offset |
+| `_ZN3art3Dbg13IsJdwpAllowedEv` | `art::Dbg::IsJdwpAllowed()` | Reads current JDWP allowed state |
+| `_ZN3art7Runtime9instance_E` | `art::Runtime::instance_` | Exported global pointer to `art::Runtime*` |
+| `_ZN3art7Runtime20SetRuntimeDebugStateENS0_17RuntimeDebugStateE` | `art::Runtime::SetRuntimeDebugState(RuntimeDebugState)` | Officially sets `runtime_debug_state_ = kJavaDebuggableAtInit (2)` without hardcoding `+0x3d4` |
+
+Furthermore, `SetRuntimeDebugState` is a 3-instruction setter (`bti c; str w1, [x0, #0x3d4]; ret`). `ResolveArtSymbolsDynamically()` in [`native/agent.cpp`](native/agent.cpp) also decodes the 12-bit immediate of the ARM64 `STR W1, [X0, #imm]` instruction (`((insn >> 10) & 0xfff) * 4 = 0x3d4`) dynamically at runtime for diagnostic verification, and then calls the public Android SDK `android.os.Debug.attachJvmtiAgent("libarttipoc.so", null, classLoader)` directly.
+
+### 2. Does ART TI Hook `native` JNI Methods, or Is ShadowHook Required?
+
+**ART TI hooks `native` JNI methods natively via `JVMTI_EVENT_NATIVE_METHOD_BIND` (`can_generate_native_method_bind_events`) — no ShadowHook is needed for JNI methods.**
+
+- When `can_generate_native_method_bind_events` is enabled, ART invokes the standard JVMTI callback `OnNativeMethodBind(jvmtiEnv*, JNIEnv*, jthread, jmethodID method, void* address, void** new_address_ptr)` whenever a `native` Java method is bound (either lazily via `dlsym` on first call or explicitly via `JNIEnv::RegisterNatives`).
+- Our agent saves the original C function pointer `address` (`0x790edab908`) and writes our C++ detour pointer into `*new_address_ptr` (`0x790edac8a4`) — with **zero inline assembly trampolines** and **zero ARM64 instruction patching**:
+  ```text
+  I ARTTI_POC: [HOOK][OnNativeMethodBind] Intercepted JNI bind for Lcom/example/arttipoc/TargetWork;nativeSecretToken(Ljava/lang/String;)Ljava/lang/String; orig=0x790edab908 -> redirected=0x790edac8a4 (hits=1)
+  I ARTTI_POC: [HOOK][NativeMethodBind] HookedNativeSecretToken executed -> ARTTI_NATIVE_BIND_HOOKED[call=1,orig=ORIG_JNI(BS_CHALLENGE_42)]
+  ```
+- **When would ShadowHook ever be needed?** Only if you need to hook an **internal C/C++ function inside a native `.so` that is NOT a `native` Java/JNI method** (for example, `openat`, `connect`, or `SSL_write` inside `libc.so` / `libssl.so`). Every Java API (`BiometricPrompt`, `FingerprintManager`, `Camera`, `Camera2`, `CameraX`, and app `native` JNI methods) is 100% covered by ART TI alone.
 
 ---
 
-## Answering the Core PoC Questions (Measured on Android 17 / API 37)
+## Camera Image File Injection: Camera1, Camera2 & CameraX (`CameraInjectionHook.java`)
 
-### 1. Does `System.loadLibrary` Alone Let an ART TI Agent Attach in a Non-Debuggable App?
+[`CameraInjectionHook.java`](lspatch-bootstrap/src/org/lsposed/lspatch/loader/CameraInjectionHook.java) and [`agent.cpp`](native/agent.cpp) inject a local image file (`bs_injected_kyc_frame.jpg`, `320x240`, marker pixel `#10B981`) across all three Android camera API generations using ART TI `SetBreakpoint(location=0)` + `GetLocalObject` + `ForceEarlyReturnVoid`:
 
-**No.** Calling `System.loadLibrary("arttipoc")` inside a non-debuggable app loads the ELF image and runs `JNI_OnLoad`, where `vm->GetEnv(..., JVMTI_VERSION_1_2)` fails with `JNI_EVERSION (-3)` because ART only registers the `JVMTI` `GetEnv` handler after `libopenjdkjvmti.so` is loaded via `Runtime::AttachAgent`.
-
-Attempting to call `android.os.Debug.attachJvmtiAgent` or `VMDebug.attachAgent` in a `debuggable=false` process fails at **three gates** inside `libart.so` and `libopenjdkjvmti.so` (disassembled and measured from `/apex/com.android.art/lib64/libart.so` on Pixel 9 Pro, Android 17):
-
-| Gate | Location | Check Performed | Measured Offset / Symbol on Android 17 (`arm64`) |
+| Camera API | Hooked Method(s) at Bytecode Offset `0` | How Frame Injection Works | Verified Output on Pixel 9 Pro (Android 17) |
 | :--- | :--- | :--- | :--- |
-| **Gate 1** | `JavaVMExt::GetEnv` (`libart.so`) | Rejects `JVMTI_VERSION_*` and `kArtTiVersion (0x70010200)` until `libopenjdkjvmti.so` registers `GetEnvHandler` | Returns `JNI_EVERSION (-3)` |
-| **Gate 2** | `Dbg::IsJdwpAllowed()` (`libart.so`) | `VMDebug_nativeAttachAgent` checks global boolean `gJdwpAllowed` before calling `Runtime::AttachAgent` | `_ZN3art3Dbg12gJdwpAllowedE` at `+0xe00004` |
-| **Gate 3** | `Plugin::Load` (`libopenjdkjvmti.so`) | Calls `Runtime::IsJavaDebuggable()`, which reads `*(uint32_t*)(Runtime::instance_ + 0x3d4)` (`runtime_debug_state_`) and requires `>= 1` (`kJavaDebuggable` or `kJavaDebuggableAtInit`) | `_ZN3art7Runtime9instance_E` at `+0xe10438`, `runtime_debug_state_` at `+0x3d4` |
-
-Furthermore, inside `ArtJvmTiEnv::SetCapabilities`, `CanReinitializeNeededClasses` checks `Runtime::IsJavaDebuggableAtInit()` (`runtime_debug_state_ == 2`) before granting `can_retransform_classes` across already-loaded classes, and `DeoptManager::FinishSetup()` resets `SetJavaDebuggable(true)` (`1`) during `Agent_OnAttach`.
-
-### 2. Why Attaching in `LSPAppComponentFactoryStub.<clinit>` Solves App AOT Inlining
-
-When the JVMTI agent is attached late (for example, inside `MainActivity.onCreate()`), `MainActivity` is already resolved and executing AOT machine code on the call stack, so `TargetWork.callerMethod()` inlined into `MainActivity` does not fire hooks unless called polymorphically or deoptimized.
-
-When `LSPApplication.onLoad()` attaches the JVMTI agent inside `LSPAppComponentFactoryStub.<clinit>()` (during `LoadedApk.createAppFactory()`), `DeoptManager::FinishSetup()` transitions the ART runtime to debuggable (`UpdateEntrypointsForDebuggable`) **before `MainActivity` or any target app class is resolved by `ClassLinker`**. Consequently, even when `base.apk` is AOT-compiled with `cmd package compile -m speed`, all 3 method categories fire 100% of hooks on both direct and polymorphic calls:
-
-- Plain method (`TargetWork.plainMethod`): `plain_entry=1`, `plain_bp=1`
-- Same-class AOT-inlined method (`TargetWork.inlinedTarget`): `same_inlined_entry=1`, `same_inlined_bp=1`
-- Cross-class AOT-inlined method (`InlinedCallee.crossClassInlined`): `cross_inlined_entry=1`, `cross_inlined_bp=1`
-- `RetransformClasses` + `ClassFileLoadHook` (`mode=31`): `retransform_cap=0`, `cflh_ev=0`, `retransform_err=0`, `cflh_hits=2`
+| **Camera1 (`android.hardware.Camera`)** | `takePicture(ShutterCallback, PictureCallback, PictureCallback, PictureCallback)`<br>`setOneShotPreviewCallback(PreviewCallback)`<br>`setPreviewCallback(PreviewCallback)` | Reads `bs_injected_kyc_frame.jpg` bytes for `PictureCallback.onPictureTaken(byte[], Camera)` and converts the bitmap to an `NV21` YUV420SP byte buffer (`115,200` bytes) for `PreviewCallback.onPreviewFrame(byte[], Camera)`, then aborts the hardware call via `ForceEarlyReturnVoid`. | `Camera1_Preview=NV21_BYTES=115200`<br>`Camera1_JPEG=320x240@#10b981(5175B)` |
+| **Camera2 (`android.hardware.camera2` / `ImageReader`)** | `android.media.ImageReader.setOnImageAvailableListener(OnImageAvailableListener, Handler)` | Instead of constructing a fake `android.media.Image`, draws the injected `Bitmap` directly onto `reader.getSurface()` (`Surface.lockCanvas` + `unlockCanvasAndPost`) and invokes `listener.onImageAvailable(reader)`. When the app calls `reader.acquireLatestImage()`, the OS `BufferQueue` returns a **genuine hardware-backed `android.media.Image`** containing the injected image pixels. | `Camera2_ImageReader=320x240@#10b981` |
+| **CameraX (`androidx.camera.core.ImageAnalysis`)** | `androidx.camera.core.ImageAnalysis.setAnalyzer(Executor, ImageAnalysis$Analyzer)` | Intercepts `setAnalyzer` at offset `0`, renders the injected image onto an `ImageReader` surface, wraps the resulting `android.media.Image` in `AndroidImageProxy` (`implements ImageProxy`), and dispatches `analyzer.analyze(imageProxy)` on the caller's `Executor`. | `CameraX_Analyzer=320x240@#10b981` |
 
 ---
 
-## Version Stability: Frida vs. LSPlant/LSPatch vs. ART TI (Approach 3)
+## Banking App / RASP Scenario (`BankingSecurityGuard.java`)
 
-| Dimension | Frida (`frida-java-bridge`) | LSPatch / LSPlant (Xposed) | ART TI + LSPatch Bootstrap (Approach 3) |
+Production banking and payment apps (using RASP SDKs such as Promon Shield, GuardSquare DexGuard, or LIAPP) execute multi-layer anti-debug and anti-tamper checks before allowing KYC check deposit (Camera) or high-value wire transfer approval (`BiometricPrompt`).
+
+[`BankingSecurityGuard.java`](sample-app/src/com/example/arttipoc/BankingSecurityGuard.java) runs all **5 RASP checks** inside the target app before executing Camera KYC capture and BiometricPrompt wire transfer approval:
+
+| RASP Check | Inspection Mechanism | What `lspatch-debuggable-scrubbed.apk` (Approach #3) Sees | What `lspatch-nondebuggable.apk` + `-m verify` (Approach #1) Sees |
 | :--- | :--- | :--- | :--- |
-| **Method Hook Mechanism** | Patches `ArtMethod` entrypoints + inline ARM64 prolog trampolines | Synthesizes backup `ArtMethod` structs + replaces quick compiled entrypoints | Standard JVMTI 1.2 `SetBreakpoint(location=0)` + `ForceEarlyReturn*` |
-| **Private `libart.so` Symbols Needed** | **15+ Mangled Symbols** (breaks when LLVM mangling or class layout changes) | **10+ Internal Symbols** (`ClassLinker`, `jit::JitCodeCache`, `art_quick_to_interpreter_bridge`) | **Zero (`0` Symbols)** — uses public SDK `Debug.attachJvmtiAgent` + standard `jvmtiEnv` |
-| **Sensitivity to `ArtMethod` Struct Offsets** | **High** — hardcodes field offsets per Android API level | **High** — breaks whenever `ArtMethod` or `mirror::Class` layout shifts | **None** — Google maintains `libopenjdkjvmti.so` inside the `com.android.art` Mainline APEX |
-| **ARM64 PAC / BTI Compatibility** | **Fragile** — inline code patching can trip Pointer Auth / BTI | **Moderate** — custom trampoline machine code per architecture | **Native** — no machine code patching; handled by ART runtime |
-| **AOT Inlining Handling** | Manual deoptimization via internal `ClassLinker` | Fails if caller was AOT-inlined before hook installation | **Automatic** via `dex2oat --debuggable` + early attach in `<clinit>` + `RetransformClasses` |
-| **Android 9 (API 28) -> Android 17 (API 37)+** | Requires per-release offset updates | Broken on Android 17 without `HiddenAPI` & symbol fixes | **CTS-Enforced Public SDK + JVMTI 1.2 ABI** |
-
----
-
-## 4 Production Edge Cases Hardened & Verified
-
-1. **Original `AppComponentFactory` Delegation (`LSPAppComponentFactoryStub.java`)**:
-   - Real-world AndroidX / Hilt apps declare their own `android:appComponentFactory` (such as `androidx.core.app.CoreComponentFactory`).
-   - `LSPAppComponentFactoryStub` reads `assets/lspatch/original_app_component_factory.txt` and delegates all 6 public `AppComponentFactory` lifecycle methods (`instantiateClassLoader`, `instantiateApplication`, `instantiateActivity`, `instantiateReceiver`, `instantiateService`, `instantiateProvider`) to an instance of the original factory (verified: `origFactoryDelegated=true`).
-2. **Constructor-Free JNI `AllocObject` Fallback for `AuthenticationResult` (`agent.cpp`)**:
-   - `BiometricPrompt$AuthenticationResult` has a `@hide` constructor whose signature is `(CryptoObject, int)V` on Android 10–17 (API 29–37) and `(CryptoObject, CryptoObject, int)V` / `(CryptoObject)V` on Android 9 (API 28).
-   - `nativeCreateAuthenticationResult` probes those constructors in order and falls back to standard JNI 1.1 `env->AllocObject(resCls)` (which allocates a genuine `AuthenticationResult` instance without calling any constructor) followed by populating `mCryptoObject` and `mAuthenticationType` fields directly. Even if Android 18+ changes the `@hide` constructor signature, `PASS` remains 100% functional (verified: `allocFallbackType=2`).
-3. **Un-Enrolled Cloud Devices & Legacy `FingerprintManager` Support (`agent.cpp` + `BiometricPromptHookDialog.java`)**:
-   - Cloud test devices often have no physical fingerprint enrolled in Android Settings, causing `BiometricManager.canAuthenticate()` to return `BIOMETRIC_ERROR_NONE_ENROLLED (11)` before the app even calls `BiometricPrompt.authenticate()`.
-   - Breakpoints at bytecode offset `0` force `BiometricManager.canAuthenticate() -> ForceEarlyReturnInt(0 /* BIOMETRIC_SUCCESS */)` and `FingerprintManager.isHardwareDetected() / hasEnrolledFingerprints() -> ForceEarlyReturnInt(1 /* true */)`.
-   - Also intercepts legacy `android.hardware.fingerprint.FingerprintManager.authenticate(...)` and drives its `FingerprintManager.AuthenticationCallback` through the same in-app **PASS / FAIL / CANCEL** popup (verified: `canAuth=0 fpReady=true/true` and Step `5D` `FP_PASS`).
-4. **Memory + `IPackageManager` Binder `FLAG_DEBUGGABLE` Scrub (`LSPApplication.java`)**:
-   - Clears `ApplicationInfo.FLAG_DEBUGGABLE` from `ActivityThread.mBoundApplication.appInfo` and `LoadedApk.mApplicationInfo`, disables `ApplicationPackageManager`'s `PropertyInvalidatedCache` (`disableGetApplicationInfoCache()`), and wraps `ActivityThread.sPackageManager` (`IPackageManager`) in a dynamic proxy that strips `FLAG_DEBUGGABLE` from `getApplicationInfo` / `getPackageInfo` Binder responses for the target package (verified: `appSeesDebuggable=false pmSeesDebuggable=false`).
-
----
-
-## Rootless Package-Install / APK-Packaging Approaches (Tested End-to-End)
-
-| Approach | APK Artifact | How It Works Without Root | Requires `libart.so` Offset Patch? | Survives `cmd package compile -m speed`? | Verdict |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **#1: Rootless `adb` Compiler Filter + Profile Lock** | `build/lspatch-nondebuggable.apk` | Runs `adb shell cmd package compile -m verify -f <pkg>` after install (allowed as `shell` `uid=2000` without root) so `base.odex` contains zero AOT machine code (`compiler-filter = verify`), plus `LSPApplication.disableProfile()` locks `/data/misc/profiles/cur/0/<pkg>/primary.prof` as `0400` empty file. | Yes (`gJdwpAllowed` + `runtime_debug_state_`) | Replaced if `-m speed` is manually run later (though early attach in `LSPAppComponentFactoryStub` still deoptimizes app classes before resolution) | Good defense-in-depth addition |
-| **#2: `JingMatrix/LSPatch` Nested `origin.apk`** | `build/lspatch-nested-origin.apk` | Outer `base.apk` contains only `LSPAppComponentFactoryStub` in `classes.dex` and embeds the unmodified original APK at `assets/lspatch/origin.apk`. `installd` / `dex2oat` only sees the 1-class stub in `base.apk`. At startup, `LSPApplication.swapLoadedApkFromOrigin()` extracts `origin.apk` and swaps `mClassLoader`. | Yes (if manifest stays `debuggable=false`), plus `HiddenAPI` exemption for `ActivityThread$AppBindData` | Yes (`dex2oat` on `base.apk` never compiles `origin.apk`) | Complex; `AppBindData` reflection needs maintenance |
-| **#3: APK-Packaging `debuggable=true` + Runtime `FLAG_DEBUGGABLE` Scrub (Recommended)** | `build/lspatch-debuggable-scrubbed.apk` | Sets `android:debuggable="true"` in `AndroidManifest.xml` during the existing APK repackaging/re-signing step (`LSPatch --debuggable`). Zygote spawns the process with `gJdwpAllowed=1` and `runtime_debug_state_=2` (`kJavaDebuggableAtInit`) officially, and `installd` passes `--debuggable` to `dex2oat`. `LSPApplication` attaches `libarttipoc.so` via the **public Android SDK `Debug.attachJvmtiAgent`** and immediately scrubs `FLAG_DEBUGGABLE` in memory and Binder (`appSeesDebuggable=false pmSeesDebuggable=false`). | **No (`0` `libart.so` symbols or struct offsets)** | **Yes (`dex2oat --debuggable` disables AOT inlining)** | **Recommended Winner for BrowserStack** |
+| **1. Java `ApplicationInfo.flags`** | `(context.getApplicationInfo().flags & FLAG_DEBUGGABLE) != 0` | `false` (Pass) | `false` (Pass) |
+| **2. Binder `IPackageManager`** | `getPackageManager().getApplicationInfo(pkg, 0).flags & FLAG_DEBUGGABLE` | `false` (Pass) | `false` (Pass) |
+| **3. Native Linux `prctl(PR_GET_DUMPABLE)`** | `prctl(PR_GET_DUMPABLE, 0, 0, 0, 0)` in C/C++ | `0` (Pass — reset via `prctl(PR_SET_DUMPABLE, 0)` in `JNI_OnLoad`) | `0` (Pass — Zygote spawned with `dumpable=0`) |
+| **4. Native `/proc/self/status` `TracerPid`** | Parses `TracerPid:` from `/proc/self/status` in C/C++ | `0` (Pass — no `ptrace` or `frida-server` attached) | `0` (Pass — no `ptrace` or `frida-server` attached) |
+| **5. Binary `AndroidManifest.xml` (`AXML`)** | Opens `base.apk` as a ZIP in C/Java and scans `RES_XML_RESOURCE_MAP_TYPE` (`0x0180`) for `android:debuggable` (`0x0101000f`) | `true` (**Flagged** because `AndroidManifest.xml` was modified to `debuggable=true`) | **`false` (Pass — `AndroidManifest.xml` has `android:debuggable="false"`)** |
+| **Overall Banking RASP Verdict** | All 5 checks combined | `BANKING_RASP_PARTIAL(4/5_CLEAN)` | **`BANKING_RASP_PASS(5/5_STEALTH_CLEAN)`** |
 
 ---
 
@@ -164,47 +161,34 @@ When `LSPApplication.onLoad()` attaches the JVMTI agent inside `LSPAppComponentF
 ./scripts/build.sh
 ```
 
-### Run Full End-to-End Verification on Connected Device
+### Run Full 7-Scenario End-to-End Verification on Connected Device
 
 ```bash
 ./scripts/test-e2e.sh
 ```
 
-### Measured Output Summary (Pixel 9 Pro, Android 17 / API 37, 2026-10-26)
+### Measured Output Summary (Pixel 9 Pro, Android 17 / API 37, 2026-10-27)
 
 ```text
---- [SCENARIO 5] Rootless Package-Install Layer #3: APK-Packaging debuggable=true + Runtime FLAG_DEBUGGABLE Scrub ---
-[5A: Biometric Popup -> PASS]
-I ARTTI_LSPatch  : Attached ART TI agent via public Debug.attachJvmtiAgent
-I ARTTI_LSPatch  : LSPApplication bootstrap complete: attach=PUBLIC_SDK_DEBUG_ATTACH_JVMTI_AGENT manifestDebuggable=true scrubbedDebuggable=true biometricHook=ARMED(cap=0,ev=0,bp3=0,bp4=0,bm=0/0,fp=0/0/0)
-I ARTTI_POC      : [HOOK_VERIFY] appSeesDebuggable=false pmSeesDebuggable=false origFactoryDelegated=true canAuth=0 fpReady=true/true allocFallbackType=2 | setupBp={classes=20465(target=1,callee=1) bp_cap=0 bp_ev=0 bp_plain=0 bp_same_inl=0 bp_cross_inl=0} | setupMe={method_entry_cap=0 method_entry_ev=0} | DirectCall={plain_entry=1 same_inlined_entry=1 cross_inlined_entry=1 | plain_bp=1 same_inlined_bp=1 cross_inlined_bp=1 | bio_bp=0 cflh=0} (plain=1031796102, caller=727) | PolyCall={plain_entry=1 same_inlined_entry=1 cross_inlined_entry=1 | plain_bp=1 same_inlined_bp=1 cross_inlined_bp=1 | bio_bp=0 cflh=0} (plain=1031796102, caller=727) | Retransform={mode=31 retransform_cap=0 cflh_ev=0 retransform_err=0 cflh_hits=2} | PostRetransform={plain_entry=1 same_inlined_entry=1 cross_inlined_entry=1 | plain_bp=1 same_inlined_bp=1 cross_inlined_bp=1 | bio_bp=0 cflh=0} (plain=1031796102, caller=727)
-I ARTTI_BIOMETRIC: [INTERCEPTED] BiometricPrompt.authenticate intercepted via ART TI! count=1 title='Verify Your Identity' subtitle='BrowserStack App Live Biometric PoC' crypto=null cancelSignal=android.os.CancellationSignal@4034130 callback=com.example.arttipoc.BiometricAuthController$1@e5f91a9
-I ARTTI_POC      : [HOOK][BiometricPrompt] ForceEarlyReturnVoid(thread) -> err=0
+--- [SCENARIO 2] Non-Debuggable Manifest + Dynamic .dynsym Attach + OnNativeMethodBind (lspatch-nondebuggable.apk) ---
+I ARTTI_POC      : [ResolveArtSymbols] Dynamically resolved from /apex/com.android.art/lib64/libart.so (.dynsym): SetJdwpAllowed=0x793e342ab8 IsJdwpAllowed=0x793e342ac8 Runtime::instance_=0x793e904438 SetRuntimeDebugState=0x793e4b8c1c decoded_debug_state_offset=0x3d4
+I ARTTI_LSPatch  : LSPApplication bootstrap complete: attach=NATIVE_MEM_PATCH(DYN_DYNSYM_OK(jdwp:0->1,dbgState:0->2@+0x3d4,jvmti:0xb40000795ececbd0)) manifestDebuggable=false scrubbedDebuggable=true biometricHook=ARMED(cap=0,ev=0,bp3=0,bp4=0,bm=0/0,fp=0/0/0) cameraHook=CAM_ARMED(c1Pic=0,c1Prv=0/0,c2Ir=0,cXAn=0)
+I ARTTI_POC      : [HOOK][OnNativeMethodBind] Intercepted JNI bind for Lcom/example/arttipoc/TargetWork;nativeSecretToken(Ljava/lang/String;)Ljava/lang/String; orig=0x790edab908 -> redirected=0x790edac8a4 (hits=1)
+I ARTTI_POC      : [HOOK][NativeMethodBind] HookedNativeSecretToken executed -> ARTTI_NATIVE_BIND_HOOKED[call=1,orig=ORIG_JNI(BS_CHALLENGE_42)]
+
+--- [SCENARIO 6] Camera1, Camera2 & CameraX Image File Injection (bs_injected_kyc_frame.jpg -> Camera Feed) ---
+I ARTTI_CAMERA   : [IMAGE_READY] Prepared injected camera image file: /data/user/0/com.example.arttipoc/files/bs_injected_kyc_frame.jpg (5175 bytes, 320x240)
+I ARTTI_POC      : [nativeInstallCameraHooks] CAM_ARMED(c1Pic=0,c1Prv=0/0,c2Ir=0,cXAn=0)
+I ARTTI_CAMERA   : [INTERCEPTED][Camera1] Camera.setPreviewCallback intercepted via ART TI! hit=1 injecting NV21 frame (115200 bytes)
+I ARTTI_CAMERA   : [INTERCEPTED][Camera1] Camera.takePicture intercepted via ART TI! hit=2 injecting 5175 bytes from bs_injected_kyc_frame.jpg
+I ARTTI_CAMERA   : [INTERCEPTED][Camera2] ImageReader.setOnImageAvailableListener intercepted via ART TI! hit=1 size=320x240 format=1
+I ARTTI_CAMERA   : [INTERCEPTED][CameraX] ImageAnalysis.setAnalyzer intercepted via ART TI! hit=1 analyzer=com.example.arttipoc.CameraTestController$$ExternalSyntheticLambda5
+I ARTTI_POC      : [CAMERA_OUTCOME] Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981 | loaderTelemetry={cam1Hits=2 cam2Hits=1 camXHits=1 file=bs_injected_kyc_frame.jpg}
+
+--- [SCENARIO 7] Banking App RASP Self-Audit (5/5 Checks) + KYC Camera Check Deposit + Biometric Wire Transfer ---
+I ARTTI_POC      : [BANKING_RASP_AUDIT] BANKING_RASP_PASS(5/5_STEALTH_CLEAN) [javaDbg=false binderPmDbg=false prctlDumpable=0 tracerPid=0 binaryManifestDbg=false]
+I ARTTI_POC      : [BANKING_KYC_CAMERA] Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981
 I ARTTI_BIOMETRIC: [POPUP_SHOWN] Displayed in-app Pass/Fail/Cancel biometric popup on Activity=com.example.arttipoc.MainActivity
 I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked PASS -> invoking onAuthenticationSucceeded
-I ARTTI_POC      : [BIO_OUTCOME] PASS (onAuthenticationSucceeded) -> AuthenticationResult(type=2, crypto=null)
-
-[5B: Biometric Popup -> FAIL]
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked FAIL -> invoking onAuthenticationFailed
-I ARTTI_POC      : [BIO_OUTCOME] FAIL (onAuthenticationFailed) -> Biometric recognized as invalid (onAuthenticationFailed)
-
-[5C: Biometric Popup -> CANCEL]
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked CANCEL -> invoking onAuthenticationError(USER_CANCELED)
-I ARTTI_POC      : [BIO_OUTCOME] CANCEL/ERROR (onAuthenticationError) -> errorCode=10 errString='User canceled biometric authentication via ART TI popup'
-
-[5D: Legacy FingerprintManager.authenticate -> PASS]
-I ARTTI_BIOMETRIC: [INTERCEPTED] FingerprintManager.authenticate intercepted via ART TI! count=1 crypto=null cancelSignal=android.os.CancellationSignal@4034130 callback=com.example.arttipoc.MainActivity$1@e5f91a9
-I ARTTI_POC      : [HOOK][FingerprintManager] ForceEarlyReturnVoid(thread) -> err=0
-I ARTTI_BIOMETRIC: [POPUP_ACTION] User clicked PASS -> invoking onAuthenticationSucceeded
-I ARTTI_POC      : [BIO_OUTCOME] FP_PASS (onAuthenticationSucceeded) -> result=android.hardware.fingerprint.FingerprintManager$AuthenticationResult@674c2a1
-
-[5E: Interactive Popup Window Hierarchy Check (uiautomator dump)]
-text="[Biometric Sim] Verify Your Identity"
-text="ART TI (JVMTI) INTERCEPTED PROMPT"
-text="BrowserStack App Live Biometric PoC"
-text="Authenticate to approve corporate transfer #4821"
-text="System BiometricPrompt was bypassed at bytecode offset 0 via JVMTI SetBreakpoint + ForceEarlyReturnVoid.&#10;Select simulated outcome:"
-text="FAIL"
-text="CANCEL"
-text="PASS"
+I ARTTI_POC      : [BANKING_OUTCOME] BANKING_TX_APPROVED [rasp={BANKING_RASP_PASS(5/5_STEALTH_CLEAN) [javaDbg=false binderPmDbg=false prctlDumpable=0 tracerPid=0 binaryManifestDbg=false]} kyc={Camera1_Preview=NV21_BYTES=115200 Camera1_JPEG=320x240@#10b981(5175B) Camera2_ImageReader=320x240@#10b981 CameraX_Analyzer=320x240@#10b981} bio={PASS (onAuthenticationSucceeded)}]
 ```

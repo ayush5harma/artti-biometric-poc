@@ -78,10 +78,13 @@ public final class LSPApplication {
             bindMainActivityNatives(context.getClassLoader());
 
             String hookStatus = BiometricPromptHookDialog.installHooks();
+            String camHookStatus = CameraInjectionHook.installHooks(
+                    context.getFilesDir(), context.getClassLoader());
             Log.i(TAG, "LSPApplication bootstrap complete: attach=" + sAttachMechanism
                     + " manifestDebuggable=" + sWasManifestDebuggable
                     + " scrubbedDebuggable=" + sScrubbedDebuggableFlag
-                    + " biometricHook=" + hookStatus);
+                    + " biometricHook=" + hookStatus
+                    + " cameraHook=" + camHookStatus);
         } catch (Throwable t) {
             Log.e(TAG, "LSPApplication.onLoad failed", t);
         }

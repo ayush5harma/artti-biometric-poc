@@ -26,14 +26,20 @@ echo "[2/6] Compiling sample app Java classes and classes.dex..."
 mkdir -p "$BUILD_DIR/classes_app" "$BUILD_DIR/dex_app"
 javac -source 11 -target 11 -cp "$PLATFORM_JAR" \
     -d "$BUILD_DIR/classes_app" \
+    "$PROJECT_ROOT/sample-app/src/androidx/camera/core/ImageProxy.java" \
+    "$PROJECT_ROOT/sample-app/src/androidx/camera/core/AndroidImageProxy.java" \
+    "$PROJECT_ROOT/sample-app/src/androidx/camera/core/ImageAnalysis.java" \
     "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/InlinedCallee.java" \
     "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/TargetWork.java" \
     "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/SampleOriginalAppComponentFactory.java" \
     "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/BiometricAuthController.java" \
+    "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/CameraTestController.java" \
+    "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/BankingSecurityGuard.java" \
     "$PROJECT_ROOT/sample-app/src/com/example/arttipoc/MainActivity.java"
 
 "$BUILD_TOOLS/d8" --min-api 29 --lib "$PLATFORM_JAR" \
     --output "$BUILD_DIR/dex_app" \
+    "$BUILD_DIR/classes_app/androidx/camera/core/"*.class \
     "$BUILD_DIR/classes_app/com/example/arttipoc/"*.class
 
 echo "[3/6] Compiling LSPatch bootstrap (metaloader.dex + loader.dex)..."
@@ -51,6 +57,7 @@ javac -source 11 -target 11 -cp "$PLATFORM_JAR" \
 javac -source 11 -target 11 -cp "$PLATFORM_JAR" \
     -d "$BUILD_DIR/classes_loader" \
     "$PROJECT_ROOT/lspatch-bootstrap/src/org/lsposed/lspatch/loader/BiometricPromptHookDialog.java" \
+    "$PROJECT_ROOT/lspatch-bootstrap/src/org/lsposed/lspatch/loader/CameraInjectionHook.java" \
     "$PROJECT_ROOT/lspatch-bootstrap/src/org/lsposed/lspatch/loader/LSPApplication.java"
 
 "$BUILD_TOOLS/d8" --min-api 29 --lib "$PLATFORM_JAR" \
@@ -61,6 +68,7 @@ javac -source 11 -target 11 -cp "$PLATFORM_JAR" \
 mkdir -p "$BUILD_DIR/dex_combined"
 "$BUILD_TOOLS/d8" --min-api 29 --lib "$PLATFORM_JAR" \
     --output "$BUILD_DIR/dex_combined" \
+    "$BUILD_DIR/classes_app/androidx/camera/core/"*.class \
     "$BUILD_DIR/classes_app/com/example/arttipoc/"*.class \
     "$BUILD_DIR/classes_meta/org/lsposed/lspatch/metaloader/"*.class
 

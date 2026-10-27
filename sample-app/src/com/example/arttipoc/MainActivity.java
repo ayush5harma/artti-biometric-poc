@@ -79,6 +79,16 @@ public class MainActivity extends Activity {
         hookTestBtn.setOnClickListener(v -> runMethodHookVerification());
         root.addView(hookTestBtn);
 
+        Button camTestBtn = new Button(this);
+        camTestBtn.setText("Run Camera1 / Camera2 / CameraX Image Injection Test");
+        camTestBtn.setOnClickListener(v -> triggerCameraInjectionFlow());
+        root.addView(camTestBtn);
+
+        Button bankingBtn = new Button(this);
+        bankingBtn.setText("Run Banking RASP + KYC Camera + Biometric Flow");
+        bankingBtn.setOnClickListener(v -> triggerBankingScenarioFlow(null));
+        root.addView(bankingBtn);
+
         mLogView = new TextView(this);
         mLogView.setTextSize(12f);
         mLogView.setTypeface(Typeface.MONOSPACE);
@@ -120,6 +130,7 @@ public class MainActivity extends Activity {
         appendLog("=== E2E Intent Action: " + action + " (bioChoice=" + bioChoice + ") ===");
         if ("run_all".equals(action)) {
             runMethodHookVerification();
+            triggerCameraInjectionFlow();
             triggerBiometricFlow(bioChoice);
         } else if ("biometric".equals(action)) {
             triggerBiometricFlow(bioChoice);
@@ -127,7 +138,42 @@ public class MainActivity extends Activity {
             triggerLegacyFingerprintFlow(bioChoice);
         } else if ("hooks".equals(action)) {
             runMethodHookVerification();
+        } else if ("camera".equals(action)) {
+            triggerCameraInjectionFlow();
+        } else if ("banking".equals(action)) {
+            triggerBankingScenarioFlow(bioChoice);
         }
+    }
+
+    private void triggerCameraInjectionFlow() {
+        appendLog("[CAMERA_FLOW] Running Camera1, Camera2, and CameraX image injection tests...");
+        CameraTestController.runAllCameraInjectionTests(summary -> {
+            String camTelemetry = queryLoaderMethod(
+                    "org.lsposed.lspatch.loader.CameraInjectionHook", "getTelemetry");
+            appendLog("[CAMERA_OUTCOME] " + summary + " | loaderTelemetry={" + camTelemetry + "}");
+            refreshStatusBanner("CAM_OK: " + summary);
+        });
+    }
+
+    private void triggerBankingScenarioFlow(final String autoClickChoice) {
+        appendLog("[BANKING_FLOW] Starting Banking RASP 5-point self-audit + KYC Camera + Wire Transfer Biometric...");
+        final String raspReport = BankingSecurityGuard.runBankingRaspAudit(this);
+        appendLog("[BANKING_RASP] " + raspReport);
+        CameraTestController.runAllCameraInjectionTests(camSummary -> {
+            appendLog("[BANKING_KYC_CAMERA] " + camSummary);
+            BiometricAuthController.triggerBiometricPrompt(this, (status, detail) -> {
+                String txVerdict = "BANKING_TX_APPROVED [rasp={" + raspReport
+                        + "} kyc={" + camSummary + "} bio={" + status + "}]";
+                appendLog("[BANKING_OUTCOME] " + txVerdict);
+                refreshStatusBanner(txVerdict);
+            });
+            if (autoClickChoice != null && !autoClickChoice.isEmpty()) {
+                mHandler.postDelayed(() -> {
+                    boolean clicked = invokeDialogClick(autoClickChoice);
+                    appendLog("[BANKING_BIO_AUTO_CLICK] choice=" + autoClickChoice + " clicked=" + clicked);
+                }, 600);
+            }
+        });
     }
 
     @SuppressWarnings("deprecation")
@@ -179,6 +225,7 @@ public class MainActivity extends Activity {
             }
 
             String setupBp = nativeControl(1, TargetWork.class, InlinedCallee.class);
+            String nativeJniHook = TargetWork.nativeSecretToken("BS_CHALLENGE_42");
             String setupMe = nativeControl(2, TargetWork.class, InlinedCallee.class);
             nativeControl(0, TargetWork.class, InlinedCallee.class);
 
@@ -205,6 +252,7 @@ public class MainActivity extends Activity {
                     + " canAuth=" + canAuth
                     + " fpReady=" + fpReady
                     + " allocFallbackType=" + allocFallbackType
+                    + " nativeJniHook=" + nativeJniHook
                     + " | setupBp={" + setupBp + "}"
                     + " | setupMe={" + setupMe + "}"
                     + " | DirectCall={" + afterDirect + "} (plain=" + directPlain + ", caller=" + directCaller + ")"

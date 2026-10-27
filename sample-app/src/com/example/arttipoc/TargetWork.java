@@ -10,6 +10,12 @@ public final class TargetWork {
 
     private TargetWork() {}
 
+    /**
+     * Native JNI method used to verify JVMTI_EVENT_NATIVE_METHOD_BIND
+     * (can_generate_native_method_bind_events) hooking without ShadowHook.
+     */
+    public static native String nativeSecretToken(String challenge);
+
     public static int inlinedTarget(int a, int b) {
         return (a * 31) + (b ^ 0x5A) + 7;
     }
